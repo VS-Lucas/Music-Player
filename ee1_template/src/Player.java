@@ -6,6 +6,11 @@ import javazoom.jl.player.FactoryRegistry;
 import support.PlayerWindow;
 import support.Song;
 
+import java.awt.event.ActionListener;
+import java.awt.event.MouseEvent;
+import java.awt.event.MouseListener;
+import java.awt.event.MouseMotionListener;
+
 public class Player {
 
     /**
@@ -30,8 +35,87 @@ public class Player {
     private Song currentSong;
     private int currentFrame = 0;
     private int newFrame;
+    private String[][] queueArray;
 
     public Player() {
+        queueArray = new String[100][6];
+
+        //button events
+        ActionListener buttonListenerPlayNow = e -> {
+            start(window.getSelectedSong());
+
+        };
+        ActionListener buttonListenerRemove =  e -> removeFromQueue(window.getSelectedSong());
+        ActionListener buttonListenerAddSong =  e -> {
+            addToQueue(currentSong);
+        };
+        ActionListener buttonListenerPlayPause =  e -> {
+            playerEnabled = !playerEnabled;
+            if (playerEnabled) {
+                pause();
+            }
+        };
+        ActionListener buttonListenerStop =  e -> stop();
+        ActionListener buttonListenerNext =  e -> next();
+        ActionListener buttonListenerPrevious =  e -> previous();
+        ActionListener buttonListenerShuffle =  e -> {
+            shuffle = !shuffle;
+            if (shuffle) {
+                pause();
+            }
+        };
+        ActionListener buttonListenerRepeat =  e -> {
+            repeat = !repeat;
+            if (repeat) {
+                pause();
+            }
+        };
+
+        //mouse events
+        MouseMotionListener scrubberListenerMotion = new MouseMotionListener() {
+            @Override
+            public void mouseDragged(MouseEvent e) {
+                mouseDragged(e);
+            }
+
+            @Override
+            public void mouseMoved(MouseEvent e) {}
+        };
+        MouseListener scrubberListenerClick = new MouseListener() {
+            @Override
+            public void mouseClicked(MouseEvent e) {}
+
+            @Override
+            public void mousePressed(MouseEvent e) {}
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                mouseReleased(e);
+            }
+
+            @Override
+            public void mouseEntered(MouseEvent e) {}
+
+            @Override
+            public void mouseExited(MouseEvent e) {}
+        };
+
+        String windowTitle = "JPlayer";
+
+        window = new PlayerWindow(
+                windowTitle,
+                queueArray,
+                buttonListenerPlayNow,
+                buttonListenerRemove,
+                buttonListenerAddSong,
+                buttonListenerShuffle,
+                buttonListenerPrevious,
+                buttonListenerPlayPause,
+                buttonListenerStop,
+                buttonListenerNext,
+                buttonListenerRepeat,
+                scrubberListenerClick,
+                scrubberListenerMotion);
     }
 
     //<editor-fold desc="Essential">
@@ -87,7 +171,7 @@ public class Player {
     public void removeFromQueue(String filePath) {
     }
 
-    public String[][] getQueueAsArray() {
+    public void getQueueAsArray() {
     }
 
     //</editor-fold>
