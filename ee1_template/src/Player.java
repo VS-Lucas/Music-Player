@@ -6,6 +6,10 @@ import javazoom.jl.player.FactoryRegistry;
 import support.PlayerWindow;
 import support.Song;
 
+import java.io.IOException;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+
 import java.awt.event.ActionListener;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
@@ -35,10 +39,11 @@ public class Player {
     private Song currentSong;
     private int currentFrame = 0;
     private int newFrame;
-    private String[][] queueArray;
+    private String[][] songArray;
+    ReentrantLock lock = new ReentrantLock();
 
     public Player() {
-        queueArray = new String[100][6];
+        songArray = new String[1][6];
 
         //button events
         ActionListener buttonListenerPlayNow = e -> {
@@ -47,7 +52,7 @@ public class Player {
         };
         ActionListener buttonListenerRemove =  e -> removeFromQueue(window.getSelectedSong());
         ActionListener buttonListenerAddSong =  e -> {
-            addToQueue(currentSong);
+            addToQueue();
         };
         ActionListener buttonListenerPlayPause =  e -> {
             playerEnabled = !playerEnabled;
@@ -100,11 +105,11 @@ public class Player {
             public void mouseExited(MouseEvent e) {}
         };
 
-        String windowTitle = "JPlayer";
+        String windowTitle = "Spotify Moral";
 
         window = new PlayerWindow(
                 windowTitle,
-                queueArray,
+                songArray,
                 buttonListenerPlayNow,
                 buttonListenerRemove,
                 buttonListenerAddSong,
@@ -165,8 +170,33 @@ public class Player {
     //</editor-fold>
 
     //<editor-fold desc="Queue Utilities">
-    public void addToQueue(Song song) {
-    }
+    public void addToQueue() { // confirmar se precisa de parametro
+            try {
+                lock.lock();
+                Song songString = this.window.getNewSong();
+                String[][] newSongArray = new String[songArray.length + 1][6];
+
+                for (int i = 0; i < songArray.length; i++) {
+                    newSongArray[i] = songArray[i];
+                }
+
+                newSongArray[songArray.length][0] = songString.getTitle();
+                newSongArray[songArray.length][1] = songString.getAlbum();
+                newSongArray[songArray.length][2] = songString.getArtist();
+                newSongArray[songArray.length][3] = songString.getYear();
+                newSongArray[songArray.length][4] = songString.getStrLength();
+                newSongArray[songArray.length][5] = songString.getFilePath();
+
+                songArray = newSongArray;
+                window.updateQueueList(newSongArray);
+
+            } catch(IOException | BitstreamException | UnsupportedTagException |InvalidDataException xu){
+                System.out.println("deu merda");
+            } finally {
+                lock.unlock();
+            }
+
+    };
 
     public void removeFromQueue(String filePath) {
     }
