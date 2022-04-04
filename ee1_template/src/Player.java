@@ -176,9 +176,7 @@ public class Player {
                 Song songString = this.window.getNewSong();
                 String[][] newSongArray = new String[songArray.length + 1][6];
 
-                for (int i = 0; i < songArray.length; i++) {
-                    newSongArray[i] = songArray[i];
-                }
+                System.arraycopy(songArray, 0, newSongArray, 0, songArray.length);
 
                 newSongArray[songArray.length][0] = songString.getTitle();
                 newSongArray[songArray.length][1] = songString.getAlbum();
