@@ -199,6 +199,22 @@ public class Player {
     };
 
     public void removeFromQueue(String filePath) {
+        int aux_index = 0;
+        int aSize = songArray.length;
+        // int songID = Integer.parseInt(this.window.getSelectedSong());
+        String[][] newSongArray = new String[songArray.length - 1][5];
+
+        for(int i = 0; i < aSize - 1; i++) {
+            if(filePath.equals(songArray[aux_index][5])) {
+                aux_index++;
+            }
+            else{
+                newSongArray[i] = songArray[aux_index];
+                aux_index++;
+            }
+        }
+        songArray = newSongArray;
+        window.updateQueueList(newSongArray);
     }
 
     public void getQueueAsArray() {
