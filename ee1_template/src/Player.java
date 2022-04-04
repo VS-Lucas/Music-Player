@@ -43,7 +43,7 @@ public class Player {
     ReentrantLock lock = new ReentrantLock();
 
     public Player() {
-        songArray = new String[1][6];
+        songArray = new String[0][6];
 
         //button events
         ActionListener buttonListenerPlayNow = e -> {
