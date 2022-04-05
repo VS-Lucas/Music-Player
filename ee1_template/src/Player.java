@@ -8,9 +8,15 @@ import support.PlayerWindow;
 import support.Song;
 import support.CustomFileChooser;
 
+import java.awt.event.*;
+import java.util.*;
+import java.util.concurrent.ThreadPoolExecutor;
+
+
 import java.io.IOException;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.locks.Condition;
 
 import java.awt.event.ActionListener;
 import java.awt.event.MouseEvent;
@@ -45,12 +51,16 @@ public class Player {
     private boolean shuffle = false;
     private boolean playerEnabled = false;
     private boolean playerPaused = true;
+    boolean toRemove = false;
     private Song currentSong;
     private int currentFrame = 0;
     private int newFrame;
     private String[][] songArray;
     ReentrantLock lock = new ReentrantLock();
+    private final Condition playPauseCondition = lock.newCondition();
+    private final Condition removeCondition = lock.newCondition();
     private static int maxFrames;
+    boolean isPlaying = false;
     //private static Demo.DemoWindow demoWindow;
 
     public Player() {
@@ -68,7 +78,7 @@ public class Player {
         ActionListener buttonListenerPlayPause =  e -> {
             playerEnabled = !playerEnabled;
             if (playerEnabled) {
-                pause();
+                PlayPause();
             }
         };
         ActionListener buttonListenerStop =  e -> stop();
@@ -77,14 +87,13 @@ public class Player {
         ActionListener buttonListenerShuffle =  e -> {
             shuffle = !shuffle;
             if (shuffle) {
-                pause();
+                PlayPause();
             }
         };
         ActionListener buttonListenerRepeat =  e -> {
             repeat = !repeat;
             if (repeat) {
-                pause();
-
+                PlayPause();
             }
         };
 
@@ -182,39 +191,37 @@ public class Player {
     //</editor-fold>
 
     //<editor-fold desc="Queue Utilities">
-    public void addToQueue() { // confirmar se precisa de parametro
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    lock.lock();
-                    Song songString = window.getNewSong();
-                    String[][] newSongArray = new String[songArray.length + 1][6];
+    public void addToQueue() {
+        Thread add = new Thread(() -> {
+            try {
+                lock.lock();
+                Song songString = window.getNewSong();
+                String[][] newSongArray = new String[songArray.length + 1][6];
 
-                    System.arraycopy(songArray, 0, newSongArray, 0, songArray.length);
+                System.arraycopy(songArray, 0, newSongArray, 0, songArray.length);
 
-                    newSongArray[songArray.length][0] = songString.getTitle();
-                    newSongArray[songArray.length][1] = songString.getAlbum();
-                    newSongArray[songArray.length][2] = songString.getArtist();
-                    newSongArray[songArray.length][3] = songString.getYear();
-                    newSongArray[songArray.length][4] = songString.getStrLength();
-                    newSongArray[songArray.length][5] = songString.getFilePath();
+                newSongArray[songArray.length][0] = songString.getTitle();
+                newSongArray[songArray.length][1] = songString.getAlbum();
+                newSongArray[songArray.length][2] = songString.getArtist();
+                newSongArray[songArray.length][3] = songString.getYear();
+                newSongArray[songArray.length][4] = songString.getStrLength();
+                newSongArray[songArray.length][5] = songString.getFilePath();
+                //colocar os milsec/frame ou trocar array de string ->song
 
 
-                    songArray = newSongArray;
-                    window.updateQueueList(newSongArray);
+                songArray = newSongArray;
+                window.updateQueueList(newSongArray);
 
-                } catch(IOException | BitstreamException | UnsupportedTagException |InvalidDataException xu){
-                    System.out.println("deu merda");
-                } finally {
-                    lock.unlock();
-                }
+            } catch(IOException | BitstreamException | UnsupportedTagException |InvalidDataException xu){
+                System.out.println("deu merda");
+            } finally {
+                lock.unlock();
             }
-        }).start();
+        });add.start();
     }
 
-    public void removeFromQueue(String filePath) {
-        new Thread(new Runnable() {
+    public void removeFromQueue(String filePath) { //break no loop da thread da reproducao
+         Thread remove = new Thread((new Runnable() {
             @Override
             public void run() {
                 try {
@@ -233,62 +240,105 @@ public class Player {
                     }
                     songArray = newSongArray;
                     window.updateQueueList(newSongArray);
+                    toRemove = true;
                 } finally {
                     lock.unlock();
                 }
-            }
-        }).start();
-    }
+            };
+
+        }));
+        remove.start();
+
+    };
 
     //</editor-fold>
 
     //<editor-fold desc="Controls">
-    public void start(String filePath) {
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                lock.lock();
-                try {
-                    //File file = fileChooser.getSelectedFile();
-                    maxFrames = new Mp3File(filePath).getFrameCount();
-                    device = FactoryRegistry.systemRegistry().createAudioDevice();
-                    device.open(decoder = new Decoder());
-                    bitstream = new Bitstream(new BufferedInputStream(new FileInputStream(filePath)));
-//                        bitstream = new Bitstream(array[1].getBufferedInputStream());
-                    //progressBar.setMaximum(maxFrames);
-                } catch (JavaLayerException | InvalidDataException | UnsupportedTagException | IOException ex) {
-                    ex.printStackTrace();
-                }
+    public void start(String filePath) {  //barra de progresso com window.setTime
+        Thread start = new Thread(() -> { // 2 opçao -> percorrer o array e encontrar a pos com o msm filepath com method song
+            lock.lock();
+            try {
+                //File file = fileChooser.getSelectedFile();
+                maxFrames = new Mp3File(filePath).getFrameCount();
+                device = FactoryRegistry.systemRegistry().createAudioDevice();
+                device.open(decoder = new Decoder());
+                bitstream = new Bitstream(new BufferedInputStream(new FileInputStream(filePath)));
+                //bitstream = new Bitstream(array[1].getBufferedInputStream());
+                //progressBar.setMaximum(maxFrames);
+            } catch (JavaLayerException | InvalidDataException | UnsupportedTagException | IOException ex) {
+                ex.printStackTrace();
+            }
+            finally {
                 lock.unlock();
-                if (device != null) {
-                    try {
-                        Header h;
-                        int currentFrame = 0;
+            }
+
+            if (device != null) {
+                try {
+                    Header h;
+                    int currentFrame = 0;
+                    // getRemove = false -> still playing
                         do {
+                            if(getRemove()) break;
                             h = bitstream.readFrame();
                             SampleBuffer output = (SampleBuffer) decoder.decodeFrame(h, bitstream);
                             device.write(output.getBuffer(), 0, output.getBufferLength());
                             bitstream.closeFrame();
                             //demoWindow.setProgress(currentFrame);
+                            //frame em milsec -> no set time mult frame * milsec
                             currentFrame++;
                         } while (h != null);
-                    } catch (JavaLayerException e) {
-                        e.printStackTrace();
-                    }
+
+                } catch (JavaLayerException e) {
+                    e.printStackTrace();
+                }
+                finally {
+                    lock.unlock();
                 }
             }
-        }).start();
+        });start.start();
     };
+
+    /// EXEMPLO
+    public boolean getRemove(){ // fazer comparação sem ter problema com situaçoes de concorr
+        lock.lock();
+        try{
+            return toRemove;
+        }
+        finally {
+            lock.unlock();
+        }
+    }
+    /// EXEMPLO
 
     public void stop() {
     }
 
-    public void Pause() {
-        try{
-            lock.lock();
-            
-        }
+    public void PlayPause() {
+//        Thread pp_thread = new Thread(new Runnable() {
+//            @Override
+//            public void run() {
+//                try{
+//                    lock.lock();
+//                    if(this.isPlaying){
+//                        playPauseCondition.await();
+//                        this.isPlaying = false;
+//                        this.window.updatePlayPauseButtonIcon(false);
+//
+//                    } else {
+//                        playPauseCondition.signalAll();
+//                        this.isPlaying = true;
+//                        this.window.updatePlayPauseButtonIcon(true);
+//                    }
+//                } finally{
+//                    lock.unlock();
+//                }
+//            }
+//        });
+//        pp_thread.start();
+
     }
+
+
 
     public void resume() {
     }
