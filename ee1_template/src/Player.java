@@ -1,10 +1,12 @@
 import com.mpatric.mp3agic.InvalidDataException;
+import com.mpatric.mp3agic.Mp3File;
 import com.mpatric.mp3agic.UnsupportedTagException;
 import javazoom.jl.decoder.*;
 import javazoom.jl.player.AudioDevice;
 import javazoom.jl.player.FactoryRegistry;
 import support.PlayerWindow;
 import support.Song;
+import support.CustomFileChooser;
 
 import java.io.IOException;
 import java.util.concurrent.locks.Lock;
@@ -14,6 +16,13 @@ import java.awt.event.ActionListener;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
 import java.awt.event.MouseMotionListener;
+
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.io.*;
+import java.lang.reflect.InvocationTargetException;
 
 public class Player {
 
@@ -41,6 +50,8 @@ public class Player {
     private int newFrame;
     private String[][] songArray;
     ReentrantLock lock = new ReentrantLock();
+    private static int maxFrames;
+    //private static Demo.DemoWindow demoWindow;
 
     public Player() {
         songArray = new String[0][6];
@@ -73,6 +84,7 @@ public class Player {
             repeat = !repeat;
             if (repeat) {
                 pause();
+
             }
         };
 
@@ -232,12 +244,50 @@ public class Player {
 
     //<editor-fold desc="Controls">
     public void start(String filePath) {
-    }
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                lock.lock();
+                try {
+                    //File file = fileChooser.getSelectedFile();
+                    maxFrames = new Mp3File(filePath).getFrameCount();
+                    device = FactoryRegistry.systemRegistry().createAudioDevice();
+                    device.open(decoder = new Decoder());
+                    bitstream = new Bitstream(new BufferedInputStream(new FileInputStream(filePath)));
+//                        bitstream = new Bitstream(array[1].getBufferedInputStream());
+                    //progressBar.setMaximum(maxFrames);
+                } catch (JavaLayerException | InvalidDataException | UnsupportedTagException | IOException ex) {
+                    ex.printStackTrace();
+                }
+                lock.unlock();
+                if (device != null) {
+                    try {
+                        Header h;
+                        int currentFrame = 0;
+                        do {
+                            h = bitstream.readFrame();
+                            SampleBuffer output = (SampleBuffer) decoder.decodeFrame(h, bitstream);
+                            device.write(output.getBuffer(), 0, output.getBufferLength());
+                            bitstream.closeFrame();
+                            //demoWindow.setProgress(currentFrame);
+                            currentFrame++;
+                        } while (h != null);
+                    } catch (JavaLayerException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+        }).start();
+    };
 
     public void stop() {
     }
 
-    public void pause() {
+    public void Pause() {
+        try{
+            lock.lock();
+            
+        }
     }
 
     public void resume() {
