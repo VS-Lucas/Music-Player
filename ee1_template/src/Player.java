@@ -171,51 +171,61 @@ public class Player {
 
     //<editor-fold desc="Queue Utilities">
     public void addToQueue() { // confirmar se precisa de parametro
-            try {
-                lock.lock();
-                Song songString = this.window.getNewSong();
-                String[][] newSongArray = new String[songArray.length + 1][6];
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    lock.lock();
+                    Song songString = window.getNewSong();
+                    String[][] newSongArray = new String[songArray.length + 1][6];
 
-                System.arraycopy(songArray, 0, newSongArray, 0, songArray.length);
+                    System.arraycopy(songArray, 0, newSongArray, 0, songArray.length);
 
-                newSongArray[songArray.length][0] = songString.getTitle();
-                newSongArray[songArray.length][1] = songString.getAlbum();
-                newSongArray[songArray.length][2] = songString.getArtist();
-                newSongArray[songArray.length][3] = songString.getYear();
-                newSongArray[songArray.length][4] = songString.getStrLength();
-                newSongArray[songArray.length][5] = songString.getFilePath();
+                    newSongArray[songArray.length][0] = songString.getTitle();
+                    newSongArray[songArray.length][1] = songString.getAlbum();
+                    newSongArray[songArray.length][2] = songString.getArtist();
+                    newSongArray[songArray.length][3] = songString.getYear();
+                    newSongArray[songArray.length][4] = songString.getStrLength();
+                    newSongArray[songArray.length][5] = songString.getFilePath();
 
-                songArray = newSongArray;
-                window.updateQueueList(newSongArray);
 
-            } catch(IOException | BitstreamException | UnsupportedTagException |InvalidDataException xu){
-                System.out.println("deu merda");
-            } finally {
-                lock.unlock();
+                    songArray = newSongArray;
+                    window.updateQueueList(newSongArray);
+
+                } catch(IOException | BitstreamException | UnsupportedTagException |InvalidDataException xu){
+                    System.out.println("deu merda");
+                } finally {
+                    lock.unlock();
+                }
             }
-
-    };
+        }).start();
+    }
 
     public void removeFromQueue(String filePath) {
-        try {
-            lock.lock();
-            int aux_index = 0;
-            int aSize = songArray.length;
-            // int songID = Integer.parseInt(this.window.getSelectedSong());
-            String[][] newSongArray = new String[songArray.length - 1][6];
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    lock.lock();
+                    int aux_index = 0;
+                    int aSize = songArray.length;
+                    // int songID = Integer.parseInt(this.window.getSelectedSong());
+                    String[][] newSongArray = new String[songArray.length - 1][6];
 
-            for (int i = 0; i < aSize - 1; i++) {
-                if (filePath.equals(songArray[aux_index][5])) {
-                    aux_index++;
+                    for (int i = 0; i < aSize - 1; i++) {
+                        if (filePath.equals(songArray[aux_index][5])) {
+                            aux_index++;
+                        }
+                        newSongArray[i] = songArray[aux_index];
+                        aux_index++;
+                    }
+                    songArray = newSongArray;
+                    window.updateQueueList(newSongArray);
+                } finally {
+                    lock.unlock();
                 }
-                newSongArray[i] = songArray[aux_index];
-                aux_index++;
             }
-            songArray = newSongArray;
-            window.updateQueueList(newSongArray);
-        } finally {
-            lock.unlock();
-        }
+        }).start();
     }
 
     //</editor-fold>
