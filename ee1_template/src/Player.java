@@ -54,13 +54,24 @@ public class Player {
     boolean toRemove = false;
     private Song currentSong;
     private int currentFrame = 0;
-    private int newFrame;
+    private int test;
+    private Thread start;
+    private int aux;
     private String[][] songArray;
     ReentrantLock lock = new ReentrantLock();
     private final Condition playPauseCondition = lock.newCondition();
     private final Condition removeCondition = lock.newCondition();
-    private static int maxFrames;
-    boolean isPlaying = false;
+    private boolean flag = true;
+    private boolean sec_flag = false;
+    private String aux_remove;
+    private boolean NextPrevious = false;
+    private int updatedFrame;
+    private boolean isPlaying = false;
+    private boolean toStop = false;
+    private boolean aux_test = true;
+    private int counter = 0;
+    private boolean nextSong = false;
+    private boolean previousSong = false;
     ArrayList <Song> newSongArray = new ArrayList();
     //private static Demo.DemoWindow demoWindow;
 
@@ -68,30 +79,35 @@ public class Player {
         songArray = new String[0][6];
 
         //button events
-        ActionListener buttonListenerPlayNow = e -> {
-            start(window.getSelectedSong());
-
-        };
-        ActionListener buttonListenerRemove =  e -> removeFromQueue(window.getSelectedSong());
         ActionListener buttonListenerAddSong =  e -> {
             addToQueue();
         };
-        ActionListener buttonListenerPlayPause =  e -> {
-            PlayPause();
+        ActionListener buttonListenerPlayNow = e -> {
+            NextPrevious = false;
+            start(window.getSelectedSong());
         };
+        ActionListener buttonListenerRemove =  e -> {
+            removeFromQueue(window.getSelectedSong());
+        };
+        ActionListener buttonListenerPlayPause =  e -> {
+            if(isPlaying){
+                pause();
+            }else resume();
+        };
+
         ActionListener buttonListenerStop =  e -> stop();
         ActionListener buttonListenerNext =  e -> next();
         ActionListener buttonListenerPrevious =  e -> previous();
         ActionListener buttonListenerShuffle =  e -> {
             shuffle = !shuffle;
             if (shuffle) {
-                PlayPause();
+                pause();
             }
         };
         ActionListener buttonListenerRepeat =  e -> {
             repeat = !repeat;
             if (repeat) {
-                PlayPause();
+                pause();
             }
         };
 
@@ -99,7 +115,16 @@ public class Player {
         MouseMotionListener scrubberListenerMotion = new MouseMotionListener() {
             @Override
             public void mouseDragged(MouseEvent e) {
-                mouseDragged(e);
+                if(isPlaying){
+                    pause();
+                }
+                lock.lock();
+                try {
+                    updatedFrame = window.getScrubberValue() / (int) currentSong.getMsPerFrame();
+                    window.setTime((int) (updatedFrame * currentSong.getMsPerFrame()), (int) (currentSong.getNumFrames() * currentSong.getMsPerFrame()));
+                } finally {
+                    lock.unlock();
+                }
             }
 
             @Override
@@ -107,14 +132,44 @@ public class Player {
         };
         MouseListener scrubberListenerClick = new MouseListener() {
             @Override
-            public void mouseClicked(MouseEvent e) {}
-
-            @Override
-            public void mousePressed(MouseEvent e) {}
-
+            public void mousePressed(MouseEvent e) {
+                pause();
+                lock.lock();
+                try {
+                    updatedFrame = window.getScrubberValue() / (int) currentSong.getMsPerFrame();
+                    window.setTime((int) (updatedFrame * currentSong.getMsPerFrame()), (int) (currentSong.getNumFrames() * currentSong.getMsPerFrame()));
+                } finally {
+                    lock.unlock();
+                }
+            }
             @Override
             public void mouseReleased(MouseEvent e) {
+                Thread mR = new Thread(() -> {
+                    lock.lock();
+                    try {
+                        if (currentFrame > updatedFrame) {
+                            bitstream.close();
+                            device = FactoryRegistry.systemRegistry().createAudioDevice();
+                            device.open(decoder = new Decoder());
+                            bitstream = new Bitstream(currentSong.getBufferedInputStream());
+                            currentFrame = 0;
+                            skipToFrame(updatedFrame);
+                        } else {
+                            skipToFrame(updatedFrame);
+                        }
+                        currentFrame = updatedFrame;
+                        window.setTime((int) (currentFrame * currentSong.getMsPerFrame()), (int) (currentSong.getNumFrames() * currentSong.getMsPerFrame()));
+                        resume();
+                    } catch (FileNotFoundException | JavaLayerException f) {
+                        f.printStackTrace();
+                    } finally {
+                        lock.unlock();
+                    }
+                });mR.start();
             }
+
+            @Override
+            public void mouseClicked(MouseEvent e) {}
 
             @Override
             public void mouseEntered(MouseEvent e) {}
@@ -148,13 +203,18 @@ public class Player {
      */
     private boolean playNextFrame() throws JavaLayerException {
         // TODO Is this thread safe?
-        if (device != null) {
-            Header h = bitstream.readFrame();
-            if (h == null) return false;
+        lock.lock();
+        try{
+            if (device != null) {
+                Header h = bitstream.readFrame();
+                if (h == null) return false;
 
-            SampleBuffer output = (SampleBuffer) decoder.decodeFrame(h, bitstream);
-            device.write(output.getBuffer(), 0, output.getBufferLength());
-            bitstream.closeFrame();
+                SampleBuffer output = (SampleBuffer) decoder.decodeFrame(h, bitstream);
+                device.write(output.getBuffer(), 0, output.getBufferLength());
+                bitstream.closeFrame();
+            }
+        }finally {
+            lock.unlock();
         }
         return true;
     }
@@ -179,10 +239,15 @@ public class Player {
      */
     private void skipToFrame(int newFrame) throws BitstreamException {
         // TODO Is this thread safe?
-        if (newFrame > currentFrame) {
-            int framesToSkip = newFrame - currentFrame;
-            boolean condition = true;
-            while (framesToSkip-- > 0 && condition) condition = skipNextFrame();
+        lock.lock();
+        try{
+            if (newFrame > currentFrame) {
+                int framesToSkip = newFrame - currentFrame;
+                boolean condition = true;
+                while (framesToSkip-- > 0 && condition) condition = skipNextFrame();
+            }
+        }finally {
+            lock.unlock();
         }
     }
     //</editor-fold>
@@ -200,9 +265,11 @@ public class Player {
         Thread add = new Thread(() -> {
             try {
                 lock.lock();
-                newSongArray.add(window.getNewSong());
-                window.updateQueueList(queueToString());
-
+                Song newSong = window.getNewSong();
+                if(newSong != null){
+                    newSongArray.add(newSong);
+                    window.updateQueueList(queueToString());
+                }
             } catch(IOException | BitstreamException | UnsupportedTagException |InvalidDataException xu){
                 System.out.println("deu merda");
             } finally {
@@ -211,88 +278,162 @@ public class Player {
         });add.start();
     }
 
-    public void removeFromQueue(String filePath) { 
-        Thread remove = new Thread((new Runnable() {
+    public void removeFromQueue(String filePath) {
+        Thread remove = new Thread(new Runnable() {
             @Override
             public void run() {
                 try {
                     lock.lock();
-
                     for (int i = 0; i < newSongArray.size(); i++) {
                         if (newSongArray.get(i).getFilePath().equals(filePath)) {
-                            if(isPlaying){
-                                toRemove = true;
-                                window.resetMiniPlayer();
+                            if(currentSong.getFilePath().equals(filePath)){
+                                flag = false;
+                                if(aux < newSongArray.size()-1){
+                                    sec_flag = true;
+                                    flag = true;
+                                    nextSong = true;
+                                }
                             }
                             newSongArray.remove(i);
                         }
                     }
                     window.updateQueueList(queueToString());
-
-                } finally {
+                }
+                finally {
                     lock.unlock();
                 }
             };
-
-        }));
+        });
         remove.start();
-
     };
 
     //</editor-fold>
 
     //<editor-fold desc="Controls">
     public void start(String filePath) {
-        Thread start = new Thread(() -> {
-            Song currentSong;
+        lock.lock();
+        try{
+            if(start != null && start.isAlive()){
+                start.interrupt();
+            }
+        }finally {
+            lock.unlock();
+        }
+
+        start = new Thread(() -> {
             lock.lock();
             try {
-                for (int i = 0; i <newSongArray.size(); i++) {
-                    if(newSongArray.get(i).getFilePath().equals(filePath)){
+                if(counter != 0){
+                    bitstream.close();
+                }
+                flag = true;
+                for (int i = 0; i < newSongArray.size(); i++) {
+                    if (newSongArray.get(i).getFilePath().equals(filePath) && !NextPrevious) {
                         currentSong = newSongArray.get(i);
+                        aux = i;
                         bitstream = new Bitstream(currentSong.getBufferedInputStream());
                         device = FactoryRegistry.systemRegistry().createAudioDevice();
                         device.open(decoder = new Decoder());
-                        if (device != null) {
-                            try {
-                                isPlaying = true;
-                                window.setEnabledPlayPauseButton(true);
-                                window.updatePlayPauseButtonIcon(false);
-                                //                    Header h;
-                                // getRemove = false -> still playing
-                                int currentFrame = 0;
-                                lock.unlock();
-                                while (playNextFrame()){
-                                    window.setTime((int) (currentFrame* currentSong.getMsPerFrame()), (int) (currentSong.getNumFrames()*currentSong.getMsPerFrame()));
-                                    if(!isPlaying){
-                                        lock.lock();
-                                        try {
-                                            playPauseCondition.await();
-                                        } finally {
-                                            lock.unlock();
-                                        }
-                                    }
-                                    if(getRemove()) {
-                                        toRemove = false;
-                                        break;
-                                    }
-                                    currentFrame++;
-                                };
-                            } catch (JavaLayerException e) {
-                                e.printStackTrace();
-                            } catch (InterruptedException e) {
-                                e.printStackTrace();
+                        counter++;
+
+                    }else if(NextPrevious){
+                        if (nextSong) {
+
+                            nextSong = false;
+                            aux = aux + 1;
+                            if(sec_flag){
+                                aux--;
                             }
+                            sec_flag = false;
+                            currentSong = newSongArray.get(aux);
+                            bitstream = new Bitstream(currentSong.getBufferedInputStream());
+                            device = FactoryRegistry.systemRegistry().createAudioDevice();
+                            device.open(decoder = new Decoder());
+                        } else if (previousSong) {
+                            previousSong = false;
+                            aux = aux - 1;
+                            currentSong = newSongArray.get(aux);
+                            bitstream = new Bitstream(currentSong.getBufferedInputStream());
+                            device = FactoryRegistry.systemRegistry().createAudioDevice();
+                            device.open(decoder = new Decoder());
                         }
+                        NextPrevious = false;
+                        break;
                     }
                 }
+                if (device != null) {
+                    try {
+                        currentFrame = 0;
+                        isPlaying = true;
+                        window.setEnabledPlayPauseButton(true);
+                        window.updatePlayPauseButtonIcon(false);
+                        lock.unlock();
+                        while (playNextFrame()){
+                            //lock.lock();
+                            try{
+                                if(!isPlaying){
+                                    lock.lock();
+                                    try {
+                                        device.flush();
+                                        playPauseCondition.await();
+                                    } finally {
+                                        lock.unlock();
+                                    }
+                                }
+                                window.setEnabledScrubber(true);
+                                window.setEnabledStopButton(true);
+                                window.setTime((int) (currentFrame*currentSong.getMsPerFrame()), (int) (currentSong.getNumFrames()*currentSong.getMsPerFrame()));
+
+                                if(aux != newSongArray.size()-1) {
+                                    window.setEnabledNextButton(true);
+                                }
+                                if(aux != 0){
+                                    window.setEnabledPreviousButton(true);
+                                }
+
+                                if(!flag){
+                                    break;
+                                }
+
+                                if(toStop){
+                                    toStop = false;
+                                    break;
+                                }
+
+                                if(nextSong){
+                                    NextPrevious = true;
+                                    break;
+                                }
+                                if(previousSong){
+                                    NextPrevious = true;
+                                    break;
+                                }
+                                currentFrame++;
+                            }finally {
+                                //lock.unlock();
+                            }
+                        };
+                    } catch (JavaLayerException | InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }
+                if(flag){
+                    start(filePath);
+                }
+
             } catch (JavaLayerException | IOException ex) {
                 ex.printStackTrace();
             }finally {
                 window.resetMiniPlayer();
-                if(lock.isLocked()) lock.unlock();
+
+                if(lock.isHeldByCurrentThread() && lock.isLocked()) {
+                    lock.unlock();
+                }
             }
-        });start.start();
+        });
+        test++;
+        start.setName(String.valueOf(test));
+        start.start();
     };
 
     /// EXEMPLO
@@ -307,41 +448,43 @@ public class Player {
     }
 
     public void stop() {
+        lock.lock();
+        try{
+            flag = false;
+            toStop = true;
+        }finally {
+            lock.unlock();
+        }
+
     }
 
-    public void PlayPause() {
-        Thread pp = new Thread(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    lock.lock();
-                    if(isPlaying){
-                        //System.out.println("pausou");
-                        isPlaying = false;
-                        window.updatePlayPauseButtonIcon(true);
-
-                    } else {
-                        //System.out.println("recomeçou");
-                        isPlaying = true;
-                        playPauseCondition.signalAll();
-                        window.updatePlayPauseButtonIcon(false);
-                    }
-                }finally {
-                    lock.unlock();
-                }
-            }
-        });pp.start();
+   public void pause() {
+        try {
+            lock.lock();
+            isPlaying = false;
+            window.updatePlayPauseButtonIcon(true);
+        }finally {
+            lock.unlock();
+        }
     }
-
-
 
     public void resume() {
+        lock.lock();
+        try{
+            isPlaying = true;
+            playPauseCondition.signalAll();
+            window.updatePlayPauseButtonIcon(false);
+        }finally {
+            lock.unlock();
+        }
     }
 
     public void next() {
+        nextSong = true;
     }
 
     public void previous() {
+        previousSong = true;
     }
     //</editor-fold>
 
