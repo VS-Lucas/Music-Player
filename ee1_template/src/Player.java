@@ -5,23 +5,17 @@ import javazoom.jl.player.AudioDevice;
 import javazoom.jl.player.FactoryRegistry;
 import support.PlayerWindow;
 import support.Song;
-
 import java.util.*;
-
-
 import java.io.IOException;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.Condition;
-
 import java.awt.event.ActionListener;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
 import java.awt.event.MouseMotionListener;
-
 import java.io.*;
 
 public class Player {
-
     /**
      * The MPEG audio bitstream.
      */
@@ -34,12 +28,7 @@ public class Player {
      * The AudioDevice the audio samples are written to.
      */
     private AudioDevice device;
-
     private PlayerWindow window;
-
-    private boolean playerEnabled = false;
-    private boolean playerPaused = true;
-    boolean toRemove = false;
     private Song currentSong;
     private int currentFrame = 0;
     private int test;
@@ -49,25 +38,15 @@ public class Player {
     private String[][] songArray;
     ReentrantLock lock = new ReentrantLock();
     private final Condition playPauseCondition = lock.newCondition();
-    private final Condition removeCondition = lock.newCondition();
-    private boolean flag = true;
-    private boolean sec_flag = false;
     private String aux_remove;
-    private boolean NextPrevious = false;
-    private boolean endFlag = false;
     private int updatedFrame;
     private boolean isPlaying = false;
     private boolean toStop = false;
-    private boolean aux_test = true;
     private boolean isRepeat = false;
     private boolean isShuffle = false;
     private boolean isPlayerEnabled = false;
-    private int counter = 0;
-    private boolean nextSong = false;
-    private boolean previousSong = false;
     ArrayList <Song> songArrayList = new ArrayList();
     ArrayList <Song> copySongArrayList = new ArrayList();
-    //private static Demo.DemoWindow demoWindow;
 
     public Player() {
         songArray = new String[0][6];
@@ -98,7 +77,7 @@ public class Player {
             repeat();
         };
 
-        //mouse events
+        //Mouse events
         MouseMotionListener scrubberListenerMotion = new MouseMotionListener() {
             @Override
             public void mouseDragged(MouseEvent e) {
@@ -113,7 +92,6 @@ public class Player {
                     lock.unlock();
                 }
             }
-
             @Override
             public void mouseMoved(MouseEvent e) {}
         };
@@ -183,8 +161,6 @@ public class Player {
                 scrubberListenerMotion);
     }
 
-    //<editor-fold desc="Essential">
-
     /**
      * @return False if there are no more frames to play.
      */
@@ -237,9 +213,8 @@ public class Player {
             lock.unlock();
         }
     }
-    //</editor-fold>
 
-    public String[][] queueToString(){
+    public String[][] queueToString(){ //It returns a string array to update the queue
         String[][] auxArray = new String[songArrayList.size()][];
         for (int i = 0; i < songArrayList.size(); i++) {
             auxArray[i] = songArrayList.get(i).getDisplayInfo();
@@ -247,8 +222,7 @@ public class Player {
         return auxArray;
     }
 
-    //<editor-fold desc="Queue Utilities">
-    public void addToQueue() {
+    public void addToQueue() { //It adds the new song in the playlist
         Thread add = new Thread(() -> {
             Song newSong = null;
             try {
@@ -259,7 +233,7 @@ public class Player {
             try {
                 lock.lock();
                 if(newSong != null){
-                    copySongArrayList.add(newSong);
+                    copySongArrayList.add(newSong); //To save the current list in case shuffle is called
                     songArrayList.add(newSong);
                     window.updateQueueList(queueToString());
                 }
@@ -269,17 +243,17 @@ public class Player {
         });add.start();
     }
 
-    public void removeFromQueue(String filePath) {
+    public void removeFromQueue(String filePath) { //It removes the selected song from the playlist
         Thread remove = new Thread(() -> {
             boolean toNext = false;
             try {
                 lock.lock();
-                for (int i = 0; i < songArrayList.size(); i++) {
+                for (int i = 0; i < songArrayList.size(); i++) { //Interate along the array to find the song selected
                     if (songArrayList.get(i).getFilePath().equals(filePath)) {
                         songArrayList.remove(i);
                     }
                 }
-                if(isShuffle){
+                if(isShuffle){ //Checks the condition to remove from the CopyArray
                     for(int i = 0; i < copySongArrayList.size(); i++) {
                         if(copySongArrayList.get(i).getFilePath().equals(filePath)){
                             copySongArrayList.remove(i);
@@ -295,7 +269,7 @@ public class Player {
             finally {
                 lock.unlock();
             }
-            if (toNext) {
+            if (toNext) { // It plays the next song after the removed one
                 stop();
                 lock.lock();
                 try {
@@ -309,10 +283,7 @@ public class Player {
         remove.start();
     };
 
-    //</editor-fold>
-
-    //<editor-fold desc="Controls">
-    public void start(String filePath) {
+    public void start(String filePath) { // It finds the index of the selected song and calls run method to play the song
         lock.lock();
         try{
             if(start != null && start.isAlive()){
@@ -328,7 +299,7 @@ public class Player {
                     if (songArrayList.get(i).getFilePath().equals(filePath)) {
                         currentSongIndex = i;
                         toStop = false;
-                        run(currentSongIndex);
+                        run(currentSongIndex); // Passing the index to play the song
                         break;
                     }
                 }
@@ -341,20 +312,20 @@ public class Player {
         start.start();
     }
 
-    private void run(int indice) {
+    private void run(int index) { //It plays the song in the index passed by start()
         run = new Thread(() -> {
             lock.lock();
-            currentSongIndex = indice;
-            currentSong = songArrayList.get(indice);
+            currentSongIndex = index;
+            currentSong = songArrayList.get(index);
             try {
                 isPlayerEnabled = true;
                 bitstream = new Bitstream(currentSong.getBufferedInputStream());
                 device = FactoryRegistry.systemRegistry().createAudioDevice();
                 device.open(decoder = new Decoder());
-                if(currentSongIndex != songArrayList.size()-1 || isRepeat) {
+                if (currentSongIndex != songArrayList.size() - 1 || isRepeat) {
                     window.setEnabledNextButton(true);
                 }
-                if(currentSongIndex != 0){
+                if (currentSongIndex != 0) {
                     window.setEnabledPreviousButton(true);
                 }
                 window.updatePlayingSongInfo(currentSong.getTitle(), currentSong.getAlbum(), currentSong.getArtist());
@@ -366,25 +337,25 @@ public class Player {
                 isPlaying = true;
             } catch (FileNotFoundException | JavaLayerException e) {
                 e.printStackTrace();
-            }finally {
+            } finally {
                 lock.unlock();
             }
 
             try {
-                while (playNextFrame()){
+                while (playNextFrame()) { //While there's frames left
                     lock.lock();
-                    try{
-                        if(!isPlaying){
+                    try {
+                        if (!isPlaying) {
                             device.flush();
                             playPauseCondition.await();
                         }
-                        window.setTime((int) (currentFrame*currentSong.getMsPerFrame()), (int) (currentSong.getNumFrames()*currentSong.getMsPerFrame()));
+                        window.setTime((int) (currentFrame * currentSong.getMsPerFrame()), (int) (currentSong.getNumFrames() * currentSong.getMsPerFrame()));
 
-                        if(toStop){
+                        if (toStop) {
                             break;
                         }
                         currentFrame++;
-                    }finally {
+                    } finally {
                         lock.unlock();
                     }
                 }
@@ -392,14 +363,14 @@ public class Player {
                 e.printStackTrace();
             }
             window.resetMiniPlayer();
-            if(!getStop()){
+            if (!getStop()) {
                 next();
             }
         });
         run.start();
     }
 
-    public void stop() {
+    public void stop() { //Stop the current song of playing
         lock.lock();
         try{
             toStop = true;
@@ -414,20 +385,20 @@ public class Player {
         } catch (InterruptedException ignored) {}
     }
 
-   public void pause() {
+   public void pause() { //Set pause settings
         try {
             lock.lock();
-            isPlaying = false;
+            isPlaying = false; //Not playing the song
             window.updatePlayPauseButtonIcon(true);
         }finally {
             lock.unlock();
         }
     }
 
-    public void resume() {
+    public void resume() { //Returns to play the song from the moment it was paused
         lock.lock();
         try{
-            isPlaying = true;
+            isPlaying = true; //Plays the song again
             playPauseCondition.signalAll();
             window.updatePlayPauseButtonIcon(false);
         }finally {
@@ -435,24 +406,21 @@ public class Player {
         }
     }
 
-    public void next() {
-        // Parar outras threads
-        stop();
-
+    public void next(){ //Enable the next song to play
         lock.lock();
         try{
             toStop = false;
-            if(isRepeat){
-                if(currentSongIndex == songArrayList.size()-1){
-                    run(0);
+            if(isRepeat){ //If the repeat button is enabled
+                if(currentSongIndex == songArrayList.size()-1){ //Checks if the current song is the last one
+                    run(0); //It plays the first song of the playlist
                 }
                 else{
-                    run(currentSongIndex + 1);
+                    run(currentSongIndex + 1); //Otherwise, it plays the next one in the array
                 }
             }
-            else{
-                if(currentSongIndex != songArrayList.size()-1){
-                    run(currentSongIndex + 1);
+            else{  //If the repeat button is disabled
+                if(currentSongIndex != songArrayList.size()-1){ //Checks if the current song isn't the last one
+                    run(currentSongIndex + 1); //It plays the next song
                 }
             }
         }finally {
@@ -460,22 +428,19 @@ public class Player {
         }
     }
 
-    public void previous() {
-        // Parar outras threads
-        stop();
-
+    public void previous() { //Enable to play the previous song
         lock.lock();
         try {
             toStop = false;
-            if(currentSongIndex != 0){
-                run(currentSongIndex - 1);
+            if(currentSongIndex != 0){ //Checks if the current song isn't the first one
+                run(currentSongIndex - 1); //Plays the song
             }
         }finally {
             lock.unlock();
         }
     }
 
-    public void repeat(){
+    public void repeat(){ //Enable the repeat method
         lock.lock();
         try {
             isRepeat = !isRepeat;
@@ -484,28 +449,28 @@ public class Player {
         }
     }
 
-    public void shuffle(){
+    public void shuffle(){ //Enable the shuffle method
         lock.lock();
         try {
             isShuffle = !isShuffle;
-            if(isShuffle){
-                copySongArrayList.clear();
-                copySongArrayList.addAll(songArrayList);
+            if(isShuffle){ //Checks if shuffle is enabled
+                copySongArrayList.clear(); //Clear the last copyArray to update
+                copySongArrayList.addAll(songArrayList); //Creates a new array that store the initial queue
 
                 if(isPlayerEnabled){
-                    songArrayList.remove(currentSongIndex);
-                    Collections.shuffle(songArrayList);
-                    songArrayList.add(0, copySongArrayList.get(currentSongIndex));
+                    songArrayList.remove(currentSongIndex); //Removes the current song
+                    Collections.shuffle(songArrayList); //Shuffle method applied
+                    songArrayList.add(0, copySongArrayList.get(currentSongIndex)); //Adds the current song in the first index of the copySongArrayList
                 }
                 else{
-                    Collections.shuffle(songArrayList);
+                    Collections.shuffle(songArrayList); //Shuffle method
                 }
                 currentSongIndex = 0;
             }
             else{
                 String songFilePath = currentSong.getFilePath();
                 for (int i = 0; i < copySongArrayList.size(); i++) {
-                    if(copySongArrayList.get(i).getFilePath().equals(songFilePath)){
+                    if(copySongArrayList.get(i).getFilePath().equals(songFilePath)){ //It finds the index of the current song in the copySongArrayList
                         currentSongIndex = i;
                         break;
                     }
@@ -513,24 +478,8 @@ public class Player {
                 songArrayList.clear();
                 songArrayList.addAll(copySongArrayList);
             }
-            window.updateQueueList(queueToString());
+            window.updateQueueList(queueToString()); //Update the queue. If shuffle is enabled, update a shuffled queue. If not, update the initial queue
         }finally {
-            lock.unlock();
-        }
-    }
-
-    //</editor-fold>
-
-    //<editor-fold desc="Getters and Setters">
-
-
-    /// EXEMPLO
-    public boolean getRemove(){
-        lock.lock();
-        try{
-            return toRemove;
-        }
-        finally {
             lock.unlock();
         }
     }
@@ -543,5 +492,4 @@ public class Player {
             lock.unlock();
         }
     }
-    //</editor-fold>
 }
