@@ -312,7 +312,7 @@ public class Player {
         start.start();
     }
 
-    private void run(int index) { //It plays the song in the index passed by start()
+    private void run(int index) { //It plays the song in the index provided by start()
         run = new Thread(() -> {
             lock.lock();
             currentSongIndex = index;
